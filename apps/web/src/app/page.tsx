@@ -17,6 +17,12 @@ type LeaderboardResponse = {
   players: LeaderboardPlayer[];
 };
 
+type PendingSubmission = {
+  userId: string;
+  baselineScore: number;
+  expectedScoreIncrease: number;
+};
+
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export default function HomePage() {
@@ -24,19 +30,77 @@ export default function HomePage() {
   const [answers, setAnswers] = useState(["A", "C", "B", "D", "A"]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardPlayer[]>([]);
   const [status, setStatus] = useState("Ready to submit a quiz.");
+  const [pendingSubmission, setPendingSubmission] = useState<PendingSubmission | null>(null);
 
-  async function loadLeaderboard() {
+  async function fetchLeaderboardPlayers() {
     const response = await fetch(`${apiUrl}/api/leaderboard`, { cache: "no-store" });
     const data = (await response.json()) as LeaderboardResponse;
     setLeaderboard(data.players);
+
+    return data.players;
+  }
+
+  function hasProcessedSubmission(players: LeaderboardPlayer[], pending: PendingSubmission) {
+    const player = players.find((entry) => entry.userId === pending.userId);
+    const expectedScore = pending.baselineScore + pending.expectedScoreIncrease;
+
+    return player !== undefined && player.totalScore >= expectedScore;
   }
 
   useEffect(() => {
-    void loadLeaderboard();
+    void fetchLeaderboardPlayers();
   }, []);
+
+  useEffect(() => {
+    if (!pendingSubmission) {
+      return;
+    }
+
+    let cancelled = false;
+    const submission = pendingSubmission;
+
+    async function pollUntilLeaderboardReflectsSubmission() {
+      while (!cancelled) {
+        const players = await fetchLeaderboardPlayers();
+        if (hasProcessedSubmission(players, submission)) {
+          setPendingSubmission(null);
+          setStatus(`Leaderboard updated for ${submission.userId}.`);
+          return;
+        }
+
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 100);
+        });
+      }
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      if (!cancelled) {
+        cancelled = true;
+        setPendingSubmission(null);
+        setStatus("Leaderboard update timed out. Please refresh to verify.");
+      }
+    }, 15_000);
+
+    void pollUntilLeaderboardReflectsSubmission();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [pendingSubmission]);
 
   async function submitQuiz(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const players = await fetchLeaderboardPlayers();
+    const baselineScore = players.find((player) => player.userId === userId)?.totalScore ?? 0;
+
+    setPendingSubmission({
+      userId,
+      baselineScore,
+      expectedScoreIncrease: answers.length * 10
+    });
     setStatus("Submission accepted. Evaluation is running asynchronously.");
 
     await fetch(`${apiUrl}/api/quiz/submit`, {
@@ -44,8 +108,6 @@ export default function HomePage() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId, quizId: "quiz-1", answers })
     });
-
-    await loadLeaderboard();
   }
 
   return (

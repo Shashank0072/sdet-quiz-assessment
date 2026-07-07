@@ -6,11 +6,11 @@ export const options = {
   duration: "20s",
   thresholds: {
     http_req_failed: ["rate<0.05"],
-    http_req_duration: ["p(95)<500"]
+    http_req_duration: ["p(95)<200"]
   }
 };
 
-const apiUrl = __ENV.API_URL || "http://localhost:3001";
+const apiUrl = __ENV.API_BASE_URL || __ENV.API_URL || "http://localhost:3001";
 
 export default function () {
   const userId = `perf-user-${__VU}`;
@@ -20,7 +20,7 @@ export default function () {
     answers: ["A", "C", "B", "D", "A"]
   });
 
-  const submit = http.post(`${apiUrl}/api/quiz/submit`, payload, {
+  const submit = http.post(`${apiUrl}/api/v1/submit`, payload, {
     headers: { "content-type": "application/json" }
   });
 

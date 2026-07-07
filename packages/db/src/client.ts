@@ -27,6 +27,13 @@ export function createDatabase() {
 
   const sqlite = new Database(path);
   sqlite.run("PRAGMA foreign_keys = ON");
+  sqlite.run("PRAGMA journal_mode = WAL");
+  sqlite.run("PRAGMA synchronous = NORMAL");
+  sqlite.run("PRAGMA temp_store = MEMORY");
+  sqlite.run("PRAGMA locking_mode = NORMAL");
+  sqlite.run("PRAGMA busy_timeout = 15000");
+  sqlite.run("PRAGMA wal_autocheckpoint = 1000");
+  sqlite.run("PRAGMA cache_size = -20000");
 
   return drizzle(sqlite, { schema });
 }

@@ -18,8 +18,16 @@
       "outputs": ["playwright-report/**", "test-results/**"]
     },
     "test:perf": {
-      "inputs": ["package.json"],
-      "outputs": ["dist/perf-results.json"]
+      "cache": false,
+      "inputs": [
+        "package.json",
+        "scripts/**",
+        "src/**",
+        "../../apps/api/src/**",
+        "../../packages/workers/src/**"
+      ],
+      "outputs": ["dist/perf-results.json"],
+      "env": ["API_BASE_URL", "DATABASE_URL", "REDIS_URL", "PORT"]
     },
     "lint": {
       "outputs": []

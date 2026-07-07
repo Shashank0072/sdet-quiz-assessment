@@ -4,7 +4,7 @@ import { processQuizSubmission, type QuizSubmissionJob } from "./processor";
 
 export const QUIZ_EVALUATION_QUEUE = "quiz-evaluation";
 
-export function createQuizWorker() {
+export async function createQuizWorker() {
   const worker = new Worker<QuizSubmissionJob>(
     QUIZ_EVALUATION_QUEUE,
     async (job) => processQuizSubmission(job.data),
@@ -22,10 +22,12 @@ export function createQuizWorker() {
     console.error(`failed ${job?.id ?? "unknown"}: ${error.message}`);
   });
 
+  await worker.waitUntilReady();
+
   return worker;
 }
 
 if (import.meta.main) {
-  createQuizWorker();
+  await createQuizWorker();
   console.log("quiz evaluation worker listening on queue quiz-evaluation with concurrency 8");
 }

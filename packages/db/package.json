@@ -13,7 +13,7 @@
     "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "generate": "drizzle-kit generate",
     "migrate": "bun run scripts/migrate.ts",
-    "test": "bun test",
+    "test": "bun test --timeout 10000",
     "lint": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

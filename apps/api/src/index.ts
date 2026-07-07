@@ -7,6 +7,35 @@ import { createQuizEvaluationQueue } from "./queue";
 const queue = createQuizEvaluationQueue();
 const redis = createRedisConnection();
 
+async function waitForQueueReady() {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await queue.waitUntilReady();
+      return;
+    } catch {
+      if (attempt === 7) {
+        throw new Error("queue did not become ready");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+}
+
+async function enqueueSubmission(payload: { submissionId: string; userId: string; quizId: string; answers: string[] }) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await waitForQueueReady();
+      await queue.add("evaluate-submission", payload);
+      return;
+    } catch {
+      if (attempt === 7) {
+        throw new Error("failed to enqueue submission");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+}
+
 const submitBody = t.Object({
   userId: t.String({ minLength: 1 }),
   quizId: t.String({ minLength: 1 }),
@@ -26,6 +55,20 @@ async function getLeaderboardFromDb() {
     .limit(10);
 }
 
+const submitHandler = async ({ body, set }: { body: { userId: string; quizId: string; answers: string[] }; set: { status: number } }) => {
+  const submissionId = crypto.randomUUID();
+
+  await enqueueSubmission({
+    submissionId,
+    userId: body.userId,
+    quizId: body.quizId,
+    answers: body.answers
+  });
+
+  set.status = 202;
+  return { accepted: true, submissionId };
+};
+
 export const app = new Elysia()
   .use(
     cors({
@@ -33,37 +76,12 @@ export const app = new Elysia()
       methods: ["GET", "POST", "OPTIONS"]
     })
   )
-  .get("/health", () => ({ status: "ok" }))
-  .post(
-    "/api/quiz/submit",
-    async ({ body, set }) => {
-      const submissionId = crypto.randomUUID();
-
-      await db
-        .insert(users)
-        .values({ id: body.userId, displayName: body.userId })
-        .onConflictDoNothing();
-
-      await db.insert(submissions).values({
-        id: submissionId,
-        userId: body.userId,
-        quizId: body.quizId,
-        answersJson: JSON.stringify(body.answers),
-        status: "queued"
-      });
-
-      await queue.add("evaluate-submission", {
-        submissionId,
-        userId: body.userId,
-        quizId: body.quizId,
-        answers: body.answers
-      });
-
-      set.status = 202;
-      return { accepted: true, submissionId };
-    },
-    { body: submitBody }
-  )
+  .get("/health", async () => {
+    await waitForQueueReady();
+    return { status: "ok" };
+  })
+  .post("/api/quiz/submit", submitHandler, { body: submitBody })
+  .post("/api/v1/submit", submitHandler, { body: submitBody })
   .get("/api/leaderboard", async () => {
     const cached = await redis.get(LEADERBOARD_CACHE_KEY);
 
@@ -77,6 +95,7 @@ export const app = new Elysia()
 
 if (import.meta.main) {
   const port = Number(process.env.PORT ?? 3001);
+  await waitForQueueReady();
   app.listen(port);
   console.log(`quiz api listening on http://localhost:${port}`);
 }
